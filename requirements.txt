@@ -1,0 +1,10 @@
+fastapi==0.115.0
+uvicorn==0.32.0
+python-dotenv==1.0.1
+langchain==0.3.9
+langchain-openai==0.2.9
+langchain-core==0.3.21
+elevenlabs==1.11.0
+openai==1.54.4
+pydantic==2.9.2
+python-multipart==0.0.17

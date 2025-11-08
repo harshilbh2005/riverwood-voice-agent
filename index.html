@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Riverwood AI Agent</title>
+    <style>
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          Helvetica, Arial, sans-serif;
+        background-color: #f4f7f6;
+        color: #333;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        margin: 0;
+      }
+      .container {
+        text-align: center;
+        background: #ffffff;
+        padding: 2rem 3rem;
+        border-radius: 16px;
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.05);
+        max-width: 500px;
+      }
+      h1 {
+        color: #004d40;
+        font-weight: 700;
+        margin-bottom: 0.5rem;
+      }
+      .subtitle {
+        color: #666;
+        margin-bottom: 1.5rem;
+      }
+
+      @keyframes pulse {
+        0%,
+        100% {
+          transform: scale(1);
+          box-shadow: 0 4px 15px rgba(211, 47, 47, 0.3);
+        }
+        50% {
+          transform: scale(1.05);
+          box-shadow: 0 6px 25px rgba(211, 47, 47, 0.5);
+        }
+      }
+
+      #talkButton {
+        background-color: #00796b;
+        color: white;
+        border: none;
+        padding: 1.2rem 2.5rem;
+        font-size: 1.2rem;
+        font-weight: 600;
+        border-radius: 50px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        box-shadow: 0 4px 15px rgba(0, 121, 107, 0.2);
+        min-width: 220px;
+      }
+
+      #talkButton.listening {
+        background-color: #d32f2f;
+        animation: pulse 1.5s infinite;
+      }
+
+      #talkButton:hover:not(:disabled) {
+        background-color: #004d40;
+        transform: translateY(-2px);
+      }
+
+      #talkButton:disabled:not(.listening) {
+        background-color: #b2dfdb;
+        cursor: not-allowed;
+      }
+
+      #status {
+        margin-top: 1.5rem;
+        font-size: 1rem;
+        color: #555;
+        min-height: 24px;
+      }
+
+      #transcript {
+        margin-top: 1rem;
+        padding: 1rem;
+        background: #f0f4f3;
+        border-radius: 12px;
+        min-height: 50px;
+        color: #004d40;
+        font-style: italic;
+      }
+
+      .latency {
+        margin-top: 0.5rem;
+        font-size: 0.85rem;
+        color: #999;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>🏠 Riverwood AI Voice Agent</h1>
+      <p class="subtitle">Press and hold to talk with Rivee</p>
+      <button id="talkButton">🎙️ Hold to Talk</button>
+      <div id="status">Ready to listen...</div>
+      <div id="transcript"></div>
+      <div class="latency" id="latency"></div>
+    </div>
+
+    <audio id="audioPlayer" style="display: none"></audio>
+
+    <script>
+      const talkButton = document.getElementById("talkButton");
+      const statusDiv = document.getElementById("status");
+      const transcriptDiv = document.getElementById("transcript");
+      const latencyDiv = document.getElementById("latency");
+      const audioPlayer = document.getElementById("audioPlayer");
+
+      let mediaRecorder;
+      let audioChunks = [];
+      let isProcessing = false;
+
+      // Hold to record
+      talkButton.addEventListener("mousedown", async () => {
+        if (isProcessing) return;
+
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            audio: true,
+          });
+          mediaRecorder = new MediaRecorder(stream);
+          audioChunks = [];
+
+          mediaRecorder.ondataavailable = (event) => {
+            audioChunks.push(event.data);
+          };
+
+          mediaRecorder.onstop = async () => {
+            isProcessing = true;
+            statusDiv.textContent = "🔄 Processing your voice...";
+            talkButton.classList.remove("listening");
+
+            const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
+
+            // 1. Transcribe with Whisper
+            const formData = new FormData();
+            formData.append("audio", audioBlob, "recording.webm");
+
+            try {
+              const transcribeResponse = await fetch("/transcribe", {
+                method: "POST",
+                body: formData,
+              });
+
+              const transcribeData = await transcribeResponse.json();
+              const transcribedText = transcribeData.text;
+
+              transcriptDiv.textContent = `You: "${transcribedText}"`;
+              statusDiv.textContent = "🤔 Rivee is thinking...";
+
+              // 2. Get AI response
+              await getAIResponse(transcribedText);
+            } catch (error) {
+              console.error("Error:", error);
+              statusDiv.textContent = "❌ Error. Try again.";
+              resetUI();
+            }
+          };
+
+          mediaRecorder.start();
+          talkButton.classList.add("listening");
+          talkButton.textContent = "🔴 Recording...";
+          statusDiv.textContent = "🎤 Listening... Release when done";
+        } catch (error) {
+          console.error("Microphone error:", error);
+          statusDiv.textContent = "❌ Allow microphone access";
+        }
+      });
+
+      talkButton.addEventListener("mouseup", () => {
+        if (mediaRecorder && mediaRecorder.state === "recording") {
+          mediaRecorder.stop();
+          talkButton.textContent = "🎙️ Hold to Talk";
+          mediaRecorder.stream.getTracks().forEach((track) => track.stop());
+        }
+      });
+
+      talkButton.addEventListener("mouseleave", () => {
+        if (mediaRecorder && mediaRecorder.state === "recording") {
+          mediaRecorder.stop();
+          talkButton.textContent = "🎙️ Hold to Talk";
+          mediaRecorder.stream.getTracks().forEach((track) => track.stop());
+        }
+      });
+
+      async function getAIResponse(text) {
+        const startTime = Date.now();
+
+        try {
+          const response = await fetch("/chat-audio", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              message: text,
+              session_id: "default_user",
+            }),
+          });
+
+          if (!response.ok) throw new Error("Server error");
+
+          const llmTime = response.headers.get("X-LLM-Time");
+          const ttsTime = response.headers.get("X-TTS-Time");
+
+          statusDiv.textContent = "🔊 Rivee is speaking...";
+
+          const audioBlob = await response.blob();
+          const audioUrl = URL.createObjectURL(audioBlob);
+
+          audioPlayer.src = audioUrl;
+          audioPlayer.play();
+
+          const totalTime = ((Date.now() - startTime) / 1000).toFixed(2);
+          latencyDiv.textContent = `⚡ ${totalTime}s total (LLM: ${parseFloat(
+            llmTime
+          ).toFixed(2)}s, Voice: ${parseFloat(ttsTime).toFixed(2)}s)`;
+
+          audioPlayer.onended = () => {
+            statusDiv.textContent = "✅ Ready! Hold to talk again";
+            resetUI();
+          };
+        } catch (error) {
+          console.error("Error:", error);
+          statusDiv.textContent = "❌ Error. Try again.";
+          resetUI();
+        }
+      }
+
+      function resetUI() {
+        isProcessing = false;
+        talkButton.disabled = false;
+        talkButton.textContent = "🎙️ Hold to Talk";
+        talkButton.classList.remove("listening");
+      }
+    </script>
+  </body>
+</html>
