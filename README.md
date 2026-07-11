@@ -1,6 +1,6 @@
-# 🏠 Riverwood AI Voice Agent - "Rivee"
+#  hinglish-real-estate-voice-agent - "Rivee"
 
-Natural Hinglish conversation agent with memory for Riverwood Projects
+Natural Hinglish conversation agent with memory 
 
 **🌐 Live Demo:** https://replit.com/@harshilbrahmani/riverwood-ai-agent  
 **Submitted by:** Harshil Brahmani
